@@ -28,9 +28,10 @@ app.get('/api/template/:id', async (req, res) => {
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     };
 
-    // 只有在你显式配置了 CHROME_PATH 时，才指定 executablePath
-    // 本地 Windows 可设置：CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
-    // Render/Linux 建议不填，让 puppeteer 自己使用它下载的 Chromium
+    // ✅ Render/Linux：默认用 puppeteer 自己下载的 Chromium（不手动指定 executablePath）
+    // ✅ 本地 Windows：如需用本机 Chrome，可在环境变量里设置 CHROME_PATH
+    //    PowerShell 示例：
+    //    $env:CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
     if (process.env.CHROME_PATH) {
       launchOptions.executablePath = process.env.CHROME_PATH;
     }
@@ -69,9 +70,9 @@ app.get('/api/template/:id', async (req, res) => {
     }, selectors);
 
     if (!outerHtml) {
-      return res
-        .status(404)
-        .json({ error: '未在页面中找到模板主 DIV，请检查页面结构是否有变化。' });
+      return res.status(404).json({
+        error: '未在页面中找到模板主 DIV，请检查页面结构是否有变化。'
+      });
     }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -79,7 +80,8 @@ app.get('/api/template/:id', async (req, res) => {
   } catch (error) {
     console.error('使用无头浏览器获取模板失败：', error);
     res.status(500).json({
-      error: '使用无头浏览器获取模板失败，请确认编号是否有效或稍后重试。'
+      error: '使用无头浏览器获取模板失败，请确认编号是否有效或稍后重试。',
+      detail: error?.message || String(error)
     });
   } finally {
     if (browser) {
@@ -92,7 +94,7 @@ app.get('/api/template/:id', async (req, res) => {
   }
 });
 
-// Render/容器环境建议绑定 0.0.0.0，确保外部可访问
+// ✅ Render/容器环境建议绑定 0.0.0.0，确保外部可访问
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });
