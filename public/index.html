@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>135 编辑器模板 HTML 获取工具</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="输入 135 编辑器模板编号，一键获取并复制渲染后的模板 HTML 代码。"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark">135</span>
+          <span class="brand-text">模板 HTML 获取器</span>
+        </div>
+        <div class="header-meta">只需输入模板编号，即可复制渲染后的 DIV 代码</div>
+      </header>
+
+      <main class="container">
+        <section class="panel panel-input">
+          <div class="panel-header">
+            <div class="panel-title">选择模板</div>
+            <div class="panel-subtitle">
+              支持直接访问
+              <code>?id=模板编号</code>
+              自动加载，例如
+              <code>?id=169164</code>
+            </div>
+          </div>
+
+          <div class="input-row">
+            <label class="field-label" for="templateId">模板编号</label>
+            <div class="field-group">
+              <input
+                type="text"
+                id="templateId"
+                placeholder="请输入模板编号，例如：169164"
+                autocomplete="off"
+              />
+              <button id="goButton" class="btn btn-primary">跳转并获取</button>
+            </div>
+          </div>
+
+          <div class="status-row">
+            <span id="statusText"></span>
+          </div>
+
+          <div class="helper-row">
+            <span class="helper-dot"></span>
+            <span class="helper-text">
+              我们会使用无头浏览器执行页面脚本，并只提取模板主 DIV 的运行时 HTML。
+            </span>
+          </div>
+        </section>
+
+        <section class="panel panel-code">
+          <div class="panel-header panel-header-inline">
+            <div>
+              <div class="panel-title">模板 HTML 源码</div>
+              <div class="panel-subtitle">
+                结果为运行时 DOM 的
+                <code>outerHTML</code>
+                ，可直接粘贴到编辑器中。
+              </div>
+            </div>
+            <button id="copyButton" class="btn btn-ghost">一键复制代码</button>
+          </div>
+          <div class="code-wrapper">
+            <textarea
+              id="codeOutput"
+              spellcheck="false"
+              placeholder="尚未获取到代码。请输入上方模板编号并点击「跳转并获取」。"
+            ></textarea>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <span>135 Template Inspector</span>
+        <span class="footer-dot">·</span>
+        <span>Designed for高效模板整理</span>
+      </footer>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+  </html>
+

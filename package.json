@@ -1,0 +1,24 @@
+{
+  "name": "135-editor-template-fetcher",
+  "version": "1.0.0",
+  "description": "根据 135 编辑器模板编号获取模板 HTML 源码并一键复制的工具网站",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "135editor",
+    "template",
+    "html",
+    "fetcher"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.0",
+    "puppeteer": "^24.37.2"
+  }
+}
