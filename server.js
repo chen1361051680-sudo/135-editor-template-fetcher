@@ -1,100 +1,187 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const puppeteer = require('puppeteer');
+/**
+ * server.js
+ * 135-editor-template-fetcher
+ *
+ * API:
+ *   GET /api/template?id=169311
+ * -> returns outerHTML (text/plain)
+ */
+
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+const puppeteer = require("puppeteer");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// 静态资源：前端页面
-app.use(express.static(path.join(__dirname, 'public')));
+const PORT = process.env.PORT || 10000;
 
-// API：使用无头浏览器，根据模板编号获取「渲染后目标 DIV 的 outerHTML」
-app.get('/api/template/:id', async (req, res) => {
-  const { id } = req.params;
+app.use(express.static(path.join(__dirname, "public")));
 
-  if (!/^\d+$/.test(id)) {
-    return res.status(400).json({ error: '模板编号必须为数字' });
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
+function getTargetUrl(templateId) {
+  return `https://www.135editor.com/editor_styles/${encodeURIComponent(
+    templateId
+  )}?preview=1`;
+}
+
+/**
+ * 一组更贴近 135 预览页的候选容器
+ * 找不到就退回抓 body
+ */
+async function tryExtractFromContext(ctx) {
+  const selectors = [
+    // 微信文章常见容器
+    "#js_content",
+    "article",
+    ".rich_media_content",
+
+    // 编辑器预览常见
+    ".preview",
+    ".preview-container",
+    ".preview-content",
+    ".editor-preview",
+    ".content",
+    ".page",
+    "#page",
+  ];
+
+  // 稳一点，给渲染一点时间
+  await ctx.waitForTimeout?.(800).catch(() => {});
+
+  // 优先尝试命中容器
+  try {
+    const html = await ctx.evaluate((sels) => {
+      for (const sel of sels) {
+        const el = document.querySelector(sel);
+        if (el && el.outerHTML && el.outerHTML.length > 300) {
+          return el.outerHTML;
+        }
+      }
+      // 兜底抓 body
+      return document.body ? document.body.outerHTML : null;
+    }, selectors);
+
+    return html;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 从页面里找一个“最像预览内容”的 iframe
+ * 然后在 iframe 里抽取 HTML
+ */
+async function extractFromIframes(page) {
+  const frames = page.frames();
+
+  // 先按 URL 规则筛一遍
+  const prefer = frames.find((f) => {
+    const u = f.url() || "";
+    return (
+      u.includes("preview") ||
+      u.includes("editor_styles") ||
+      u.includes("style") ||
+      u.includes("render")
+    );
+  });
+
+  const candidates = prefer ? [prefer, ...frames.filter((f) => f !== prefer)] : frames;
+
+  for (const frame of candidates) {
+    try {
+      // iframe 里也走同一套提取策略
+      const html = await tryExtractFromContext(frame);
+      if (html && html.length > 300) return { html, frameUrl: frame.url() };
+    } catch {
+      // ignore and try next frame
+    }
   }
 
-  const targetUrl = `https://www.135editor.com/editor_styles/${id}?preview=1`;
+  return { html: null, frameUrl: null };
+}
+
+app.get("/api/template", async (req, res) => {
+  const templateId = (req.query.id || "").toString().trim();
+
+  if (!templateId) {
+    return res.status(400).json({
+      error: "缺少参数 id，例如 /api/template?id=169311",
+    });
+  }
+
+  const targetUrl = getTargetUrl(templateId);
 
   let browser;
   try {
-    const launchOptions = {
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    };
-
-    // ✅ Render/Linux：默认用 puppeteer 自己下载的 Chromium（不手动指定 executablePath）
-    // ✅ 本地 Windows：如需用本机 Chrome，可在环境变量里设置 CHROME_PATH
-    //    PowerShell 示例：
-    //    $env:CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
-    if (process.env.CHROME_PATH) {
-      launchOptions.executablePath = process.env.CHROME_PATH;
-    }
-
-    browser = await puppeteer.launch(launchOptions);
-
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
-    );
-
-    // 打开页面并等待网络空闲，确保大部分资源加载完成
-    await page.goto(targetUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 
-    // 再额外等一小会儿，给页面脚本一个渲染时间缓冲
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const page = await browser.newPage();
 
-    const selectors = [
-      'div#fullpage.mg-content',
-      'div#fullpage',
-      'div.mg-content',
-      '#fullpage .mg-content',
-      '.mg-content'
-    ];
+    // 让站点更像正常浏览器
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    );
+    await page.setViewport({ width: 1400, height: 900 });
 
-    // 在浏览器环境中查找目标 DIV，并返回运行时 DOM 的 outerHTML
-    const outerHtml = await page.evaluate((sels) => {
-      for (const sel of sels) {
-        const el = document.querySelector(sel);
-        if (el) return el.outerHTML;
+    page.setDefaultNavigationTimeout(60000);
+    page.setDefaultTimeout(60000);
+
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+
+    // 预览页经常还会二次渲染，多等一下
+    await page.waitForTimeout(2500);
+
+    // 1) 先从主页面尝试提取
+    let html = await tryExtractFromContext(page);
+
+    // 有些情况下抓到的是壳子，长度很短
+    if (!html || html.length < 300) {
+      // 2) 再从 iframe 提取
+      const iframeResult = await extractFromIframes(page);
+      html = iframeResult.html;
+
+      if (!html || html.length < 300) {
+        return res.status(404).json({
+          error: "未能提取到有效 HTML，可能页面结构变化或需要登录权限",
+          targetUrl,
+          iframeUrlTried: iframeResult.frameUrl,
+        });
       }
-      return null;
-    }, selectors);
-
-    if (!outerHtml) {
-      return res.status(404).json({
-        error: '未在页面中找到模板主 DIV，请检查页面结构是否有变化。'
-      });
     }
 
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.send(outerHtml.trim());
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.status(200).send(html.trim());
   } catch (error) {
-    console.error('使用无头浏览器获取模板失败：', error);
+    console.error("[/api/template] error:", error);
     res.status(500).json({
-      error: '使用无头浏览器获取模板失败，请确认编号是否有效或稍后重试。',
-      detail: error?.message || String(error)
+      error: "服务端抓取失败",
+      message: error?.message || String(error),
+      targetUrl,
     });
   } finally {
     if (browser) {
       try {
         await browser.close();
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
   }
 });
 
-// ✅ Render/容器环境建议绑定 0.0.0.0，确保外部可访问
-app.listen(PORT, '0.0.0.0', () => {
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server is running on port ${PORT}`);
 });
