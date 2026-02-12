@@ -5,10 +5,6 @@ const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-// 可通过环境变量 CHROME_PATH 自定义浏览器路径
-const CHROME_PATH =
-  process.env.CHROME_PATH ||
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
 app.use(cors());
 
@@ -27,11 +23,19 @@ app.get('/api/template/:id', async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
+    const launchOptions = {
       headless: 'new',
-      executablePath: CHROME_PATH,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+
+    // 只有在你显式配置了 CHROME_PATH 时，才指定 executablePath
+    // 本地 Windows 可设置：CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
+    // Render/Linux 建议不填，让 puppeteer 自己使用它下载的 Chromium
+    if (process.env.CHROME_PATH) {
+      launchOptions.executablePath = process.env.CHROME_PATH;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -59,9 +63,7 @@ app.get('/api/template/:id', async (req, res) => {
     const outerHtml = await page.evaluate((sels) => {
       for (const sel of sels) {
         const el = document.querySelector(sel);
-        if (el) {
-          return el.outerHTML;
-        }
+        if (el) return el.outerHTML;
       }
       return null;
     }, selectors);
@@ -90,7 +92,7 @@ app.get('/api/template/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running at http://localhost:${PORT}`);
+// Render/容器环境建议绑定 0.0.0.0，确保外部可访问
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
